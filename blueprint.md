@@ -1,36 +1,38 @@
-# Project Blueprint
+# Blueprint
 
 ## Overview
 
-This document outlines the plan for adding a camera feature to the Flutter application. The feature will allow users to take pictures and save them to a specific folder in the application's documents directory.
+This is a Flutter application that allows users to take pictures and record audio. The application provides a simple interface with two buttons on the home screen to navigate to the "Take a Picture" and "Record Audio" screens.
 
-## Current Request: Add Camera Feature
+## Features
+
+### Home Screen
+- Displays two buttons: "Take a Picture" and "Record Audio".
+- Navigates to the respective screens when the buttons are pressed.
+
+### Take a Picture
+- Uses the device's camera to display a preview.
+- A floating action button allows the user to take a picture.
+- After taking a picture, it is displayed on a new screen.
+- The user can save the picture to the device.
+
+### Record Audio
+- Allows the user to start and stop audio recording.
+- Displays a list of previously recorded audio files.
+- The user can play back the recorded audio files.
+- Displays a waveform of the selected audio file.
+
+## Style and Design
+- The application uses a simple Material Design theme.
+- The color scheme is based on `Colors.lightBlue`.
+- The UI is composed of standard Flutter widgets like `Scaffold`, `AppBar`, `ElevatedButton`, `ListView`, etc.
+
+## Current Task: Fix Compilation Errors
 
 ### Plan
-
-1.  **Add Dependencies:**
-    *   Add `camera` package for camera access.
-    *   Add `path_provider` package to get the application's document directory.
-    *   Add `path` package for path manipulation.
-
-2.  **Update `main.dart`:**
-    *   Modify the `main` function to be asynchronous and get the list of available cameras.
-    *   Create a `CameraScreen` widget to display the camera preview and a button to take a picture.
-    *   Create a `DisplayPictureScreen` to display the captured image.
-    *   Update the `MyHomePage` to include a button to navigate to the `CameraScreen`.
-
-3.  **Save Picture:**
-    *   When a picture is taken, it will be saved to a directory named `pictures` inside the application's documents directory.
-
-### Implementation Details
-
-*   **`main.dart`:**
-    *   The `main` function will be modified to ensure `WidgetsFlutterBinding.ensureInitialized()` is called and to get the first available camera.
-    *   The `MyApp` widget will be updated to pass the camera description to the `MyHomePage`.
-*   **`CameraScreen`:**
-    *   Will be a `StatefulWidget`.
-    *   `initState`: Initialize `CameraController`.
-    *   `build`: Display `CameraPreview` and a `FloatingActionButton` to take a picture.
-    *   `dispose`: Dispose the `CameraController`.
-*   **`DisplayPictureScreen`:**
-    *   A simple `StatelessWidget` that takes the image path as a parameter and displays the image using `Image.file`.
+- **Identify and fix compilation errors:** The application was failing to compile due to issues with the `audio_waveforms` package.
+- **Update code to new API:** The `audio_waveforms` package had breaking changes. The code has been updated to use the new API.
+    - Replaced `WaveformController` with `PlayerController`.
+    - Updated the `preparePlayer` and `startPlayer` method calls.
+- **Fix typos:** Corrected typos in variable names and method parameters.
+- **Run tests:** Ensured that all tests pass after the fixes.
