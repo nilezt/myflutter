@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -17,12 +18,14 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Obtain a list of the available cameras on the device.
-  final cameras = await availableCameras();
+  final cameras = kIsWeb ? <CameraDescription>[] : await availableCameras();
 
   runApp(
     MaterialApp(
       theme: ThemeData.light(),
-      home: cameras.isEmpty ? const NoCamerasScreen() : MyHomePage(cameras: cameras),
+      home: cameras.isEmpty
+          ? const NoCamerasScreen()
+          : MyHomePage(cameras: cameras),
     ),
   );
 }
@@ -61,31 +64,37 @@ class MyHomePage extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            ElevatedButton(
-              style: buttonStyle,
-              child: const Text('Take a Picture'),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => TakePictureScreen(camera: cameras.first),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(width: 16),
-            ElevatedButton(
-              style: buttonStyle,
-              child: const Text('Record Audio'),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const RecordAudioScreen(),
-                  ),
-                );
-              },
-            ),
+            if (!kIsWeb)
+              ElevatedButton(
+                style: buttonStyle,
+                child: const Text('Take a Picture'),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          TakePictureScreen(camera: cameras.first),
+                    ),
+                  );
+                },
+              ),
+            if (!kIsWeb) ...[
+              const SizedBox(width: 16),
+              ElevatedButton(
+                style: buttonStyle,
+                child: const Text('Record Audio'),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const RecordAudioScreen(),
+                    ),
+                  );
+                },
+              ),
+            ],
+            if (kIsWeb)
+              const Text('Camera and audio recording are not available on the web.'),
           ],
         ),
       ),
@@ -205,7 +214,9 @@ class _RecordAudioScreenState extends State<RecordAudioScreen> {
   @override
   void initState() {
     super.initState();
-    _recordedFiles = _getRecordedFiles();
+    if (!kIsWeb) {
+      _recordedFiles = _getRecordedFiles();
+    }
     _playerController = PlayerController();
   }
 
@@ -221,7 +232,10 @@ class _RecordAudioScreenState extends State<RecordAudioScreen> {
     final myFlutterPath = p.join(appDocumentsDir.path, 'myflutter');
     final directory = Directory(myFlutterPath);
     if (await directory.exists()) {
-      return directory.listSync().where((item) => item.path.endsWith('.opus')).toList();
+      return directory
+          .listSync()
+          .where((item) => item.path.endsWith('.opus'))
+          .toList();
     }
     return [];
   }
@@ -276,94 +290,107 @@ class _RecordAudioScreenState extends State<RecordAudioScreen> {
       appBar: AppBar(
         title: const Text('Record Audio'),
       ),
-      body: Column(
-        children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ElevatedButton(
-                  style: buttonStyle,
-                  onPressed: _isRecording ? _stopRecording : _startRecording,
-                  child: Text(_isRecording ? 'Stop Recording' : 'Start Recording'),
+      body: kIsWeb
+          ? const Center(
+              child: Text('Audio recording is not available on the web.'),
+            )
+          : Column(
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton(
+                        style: buttonStyle,
+                        onPressed:
+                            _isRecording ? _stopRecording : _startRecording,
+                        child: Text(
+                            _isRecording ? 'Stop Recording' : 'Start Recording'),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_selectedFilePath != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: AudioFileWaveforms(
+                      size: Size(MediaQuery.of(context).size.width * 0.8, 100.0),
+                      playerController: _playerController,
+                      enableSeekGesture: true,
+                      waveformType: WaveformType.long,
+                      playerWaveStyle: const PlayerWaveStyle(
+                        fixedWaveColor: Colors.white,
+                        liveWaveColor: Colors.blueAccent,
+                        spacing: 6,
+                      ),
+                    ),
+                  ),
+                const Text('Recorded Files',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Expanded(
+                  child: FutureBuilder<List<FileSystemEntity>>(
+                    future: _recordedFiles,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      } else if (snapshot.hasError) {
+                        return Center(child: Text('Error: ${snapshot.error}'));
+                      } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return const Center(
+                            child: Text('No recordings found.'));
+                      } else {
+                        final files = snapshot.data!;
+                        return ListView.builder(
+                          itemCount: files.length,
+                          itemBuilder: (context, index) {
+                            final file = files[index];
+                            return ListTile(
+                              title: Text(p.basename(file.path)),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.play_arrow),
+                                    onPressed: () {
+                                      _playerController
+                                          .preparePlayer(
+                                            path: file.path,
+                                            shouldExtractWaveform: true,
+                                          )
+                                          .then((_) =>
+                                              _playerController.startPlayer());
+
+                                      setState(() {
+                                        _selectedFilePath = file.path;
+                                      });
+                                    },
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.stop),
+                                    onPressed: () {
+                                      _playerController.stopPlayer();
+                                    },
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete),
+                                    onPressed: () =>
+                                        _deleteRecording(file.path),
+                                  ),
+                                ],
+                              ),
+                              selected: _selectedFilePath == file.path,
+                              selectedTileColor: Colors.blue.withOpacity(0.3),
+                            );
+                          },
+                        );
+                      }
+                    },
+                  ),
                 ),
               ],
             ),
-          ),
-          if (_selectedFilePath != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: AudioFileWaveforms(
-                size: Size(MediaQuery.of(context).size.width * 0.8, 100.0),
-                playerController: _playerController,
-                enableSeekGesture: true,
-                waveformType: WaveformType.long,
-                playerWaveStyle: const PlayerWaveStyle(
-                  fixedWaveColor: Colors.white,
-                  liveWaveColor: Colors.blueAccent,
-                  spacing: 6,
-                ),
-              ),
-            ),
-          const Text('Recorded Files', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          Expanded(
-            child: FutureBuilder<List<FileSystemEntity>>(
-              future: _recordedFiles,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                } else if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Text('No recordings found.'));
-                } else {
-                  final files = snapshot.data!;
-                  return ListView.builder(
-                    itemCount: files.length,
-                    itemBuilder: (context, index) {
-                      final file = files[index];
-                      return ListTile(
-                        title: Text(p.basename(file.path)),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.play_arrow),
-                              onPressed: () {
-                                _playerController.preparePlayer(
-                                  path: file.path,
-                                  shouldExtractWaveform: true,
-                                ).then((_) => _playerController.startPlayer());
-
-                                setState(() {
-                                  _selectedFilePath = file.path;
-                                });
-                              },
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.stop),
-                              onPressed: () {
-                                _playerController.stopPlayer();
-                              },
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete),
-                              onPressed: () => _deleteRecording(file.path),
-                            ),
-                          ],
-                        ),
-                        selected: _selectedFilePath == file.path,
-                        selectedTileColor: Colors.blue.withOpacity(0.3),
-                      );
-                    },
-                  );
-                }
-              },
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
