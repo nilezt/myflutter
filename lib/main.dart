@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:audio_waveforms/audio_waveforms.dart';
+import 'package:audio_waveforms/audio_waveforms.dart' as aw;
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -13,13 +14,8 @@ import 'package:record/record.dart';
 import 'preview_screen.dart';
 
 Future<void> main() async {
-  // Ensure that plugin services are initialized so that `availableCameras()`
-  // can be called before `runApp()`
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Obtain a list of the available cameras on the device.
   final cameras = kIsWeb ? <CameraDescription>[] : await availableCameras();
-
   runApp(
     MaterialApp(
       theme: ThemeData.light(),
@@ -94,7 +90,8 @@ class MyHomePage extends StatelessWidget {
               ),
             ],
             if (kIsWeb)
-              const Text('Camera and audio recording are not available on the web.'),
+              const Text(
+                  'Camera and audio recording are not available on the web.'),
           ],
         ),
       ),
@@ -102,7 +99,6 @@ class MyHomePage extends StatelessWidget {
   }
 }
 
-// A screen that allows users to take a picture using a given camera.
 class TakePictureScreen extends StatefulWidget {
   const TakePictureScreen({
     super.key,
@@ -122,22 +118,15 @@ class TakePictureScreenState extends State<TakePictureScreen> {
   @override
   void initState() {
     super.initState();
-    // To display the current output from the Camera,
-    // create a CameraController.
     _controller = CameraController(
-      // Get a specific camera from the list of available cameras.
       widget.camera,
-      // Define the resolution to use.
       ResolutionPreset.medium,
     );
-
-    // Next, initialize the controller. This returns a Future.
     _initializeControllerFuture = _controller.initialize();
   }
 
   @override
   void dispose() {
-    // Dispose of the controller when the widget is disposed.
     _controller.dispose();
     super.dispose();
   }
@@ -146,48 +135,30 @@ class TakePictureScreenState extends State<TakePictureScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Take a picture')),
-      // You must wait until the controller is initialized before displaying the
-      // camera preview. Use a FutureBuilder to display a loading spinner until the
-      // controller has finished initializing.
       body: FutureBuilder<void>(
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.done) {
-            // If the Future is complete, display the preview.
             return CameraPreview(_controller);
           } else {
-            // Otherwise, display a loading indicator.
             return const Center(child: CircularProgressIndicator());
           }
         },
       ),
       floatingActionButton: FloatingActionButton(
-        // Provide an onPressed callback.
         onPressed: () async {
-          // Take the Picture in a try / catch block. If anything goes wrong,
-          // catch the error.
           try {
-            // Ensure that the camera is initialized.
             await _initializeControllerFuture;
-
-            // Attempt to take a picture and then get the location
-            // where the image file is saved.
             final image = await _controller.takePicture();
-
             if (!mounted) return;
-
-            // If the picture was taken, display it on a new screen.
             await Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => PreviewScreen(
-                  // Pass the automatically generated path to
-                  // the DisplayPictureScreen widget.
                   imagePath: image.path,
                 ),
               ),
             );
           } catch (e) {
-            // If an error occurs, log the error to the console.
             print(e);
           }
         },
@@ -206,10 +177,13 @@ class RecordAudioScreen extends StatefulWidget {
 
 class _RecordAudioScreenState extends State<RecordAudioScreen> {
   final AudioRecorder _audioRecorder = AudioRecorder();
-  late final PlayerController _playerController;
+  final aw.PlayerController _playerController = aw.PlayerController();
+  final AudioPlayer _durationPlayer = AudioPlayer();
   bool _isRecording = false;
   String? _selectedFilePath;
-  late Future<List<FileSystemEntity>> _recordedFiles;
+  late Future<List<Map<String, dynamic>>> _recordedFiles;
+  Timer? _timer;
+  int _recordDuration = 0;
 
   @override
   void initState() {
@@ -217,27 +191,43 @@ class _RecordAudioScreenState extends State<RecordAudioScreen> {
     if (!kIsWeb) {
       _recordedFiles = _getRecordedFiles();
     }
-    _playerController = PlayerController();
   }
 
   @override
   void dispose() {
     _audioRecorder.dispose();
     _playerController.dispose();
+    _durationPlayer.dispose();
+    _timer?.cancel();
     super.dispose();
   }
 
-  Future<List<FileSystemEntity>> _getRecordedFiles() async {
+  Future<List<Map<String, dynamic>>> _getRecordedFiles() async {
     final appDocumentsDir = await getApplicationDocumentsDirectory();
     final myFlutterPath = p.join(appDocumentsDir.path, 'myflutter');
     final directory = Directory(myFlutterPath);
     if (await directory.exists()) {
-      return directory
+      final files = directory
           .listSync()
           .where((item) => item.path.endsWith('.opus'))
           .toList();
+      final fileDetails = <Map<String, dynamic>>[];
+      for (final file in files) {
+        final duration = await _getAudioDuration(file.path);
+        fileDetails.add({'path': file.path, 'duration': duration});
+      }
+      return fileDetails;
     }
     return [];
+  }
+
+  Future<Duration?> _getAudioDuration(String path) async {
+    try {
+      return await _durationPlayer.setFilePath(path);
+    } catch (e) {
+      print("Error getting duration: $e");
+      return null;
+    }
   }
 
   void _refreshRecordedFiles() {
@@ -247,11 +237,37 @@ class _RecordAudioScreenState extends State<RecordAudioScreen> {
   }
 
   Future<void> _deleteRecording(String path) async {
-    final file = File(path);
-    if (await file.exists()) {
-      await file.delete();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Recording'),
+        content: const Text('Are you sure you want to delete this recording?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final file = File(path);
+      if (await file.exists()) {
+        await file.delete();
+      }
+      if (_selectedFilePath == path) {
+        _playerController.stopPlayer();
+        setState(() {
+          _selectedFilePath = null;
+        });
+      }
+      _refreshRecordedFiles();
     }
-    _refreshRecordedFiles();
   }
 
   Future<void> _startRecording() async {
@@ -259,33 +275,43 @@ class _RecordAudioScreenState extends State<RecordAudioScreen> {
       final appDocumentsDir = await getApplicationDocumentsDirectory();
       final myFlutterPath = p.join(appDocumentsDir.path, 'myflutter');
       await Directory(myFlutterPath).create(recursive: true);
-      final filePath = p.join(
-          myFlutterPath, 'audio_${DateTime.now().millisecondsSinceEpoch}.opus');
+      final filePath =
+          p.join(myFlutterPath, 'audio_${DateTime.now().millisecondsSinceEpoch}.opus');
 
-      await _audioRecorder.start(
-          const RecordConfig(encoder: AudioEncoder.opus),
+      await _audioRecorder.start(const RecordConfig(encoder: AudioEncoder.opus),
           path: filePath);
       setState(() {
         _isRecording = true;
+        _recordDuration = 0;
       });
+      _startTimer();
     }
   }
 
   Future<void> _stopRecording() async {
     await _audioRecorder.stop();
+    _timer?.cancel();
     setState(() {
       _isRecording = false;
     });
     _refreshRecordedFiles();
   }
 
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (Timer t) {
+      setState(() => _recordDuration++);
+    });
+  }
+
+  String _formatDuration(int seconds) {
+    final minutes = (seconds / 60).floor();
+    final remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final ButtonStyle buttonStyle = ElevatedButton.styleFrom(
-      backgroundColor: Colors.lightBlue,
-      foregroundColor: Colors.white,
-    );
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Record Audio'),
@@ -296,31 +322,45 @@ class _RecordAudioScreenState extends State<RecordAudioScreen> {
             )
           : Column(
               children: <Widget>[
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      ElevatedButton(
-                        style: buttonStyle,
-                        onPressed:
-                            _isRecording ? _stopRecording : _startRecording,
-                        child: Text(
-                            _isRecording ? 'Stop Recording' : 'Start Recording'),
-                      ),
-                    ],
+                const SizedBox(height: 20),
+                Text(
+                  _isRecording ? 'Recording...' : 'Tap to Record',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                if (_isRecording)
+                  Text(
+                    _formatDuration(_recordDuration),
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                const SizedBox(height: 20),
+                GestureDetector(
+                  onTap: _isRecording ? _stopRecording : _startRecording,
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: _isRecording ? Colors.red : Colors.blue,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _isRecording ? Icons.stop : Icons.mic,
+                      color: Colors.white,
+                      size: 40,
+                    ),
                   ),
                 ),
+                const SizedBox(height: 20),
                 if (_selectedFilePath != null)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: AudioFileWaveforms(
-                      size: Size(MediaQuery.of(context).size.width * 0.8, 100.0),
+                    child: aw.AudioFileWaveforms(
+                      size:
+                          Size(MediaQuery.of(context).size.width * 0.8, 100.0),
                       playerController: _playerController,
                       enableSeekGesture: true,
-                      waveformType: WaveformType.long,
-                      playerWaveStyle: const PlayerWaveStyle(
-                        fixedWaveColor: Colors.white,
+                      waveformType: aw.WaveformType.long,
+                      playerWaveStyle: const aw.PlayerWaveStyle(
+                        fixedWaveColor: Colors.grey,
                         liveWaveColor: Colors.blueAccent,
                         spacing: 6,
                       ),
@@ -330,7 +370,7 @@ class _RecordAudioScreenState extends State<RecordAudioScreen> {
                     style:
                         TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 Expanded(
-                  child: FutureBuilder<List<FileSystemEntity>>(
+                  child: FutureBuilder<List<Map<String, dynamic>>>(
                     future: _recordedFiles,
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
@@ -346,24 +386,34 @@ class _RecordAudioScreenState extends State<RecordAudioScreen> {
                           itemCount: files.length,
                           itemBuilder: (context, index) {
                             final file = files[index];
+                            final filePath = file['path'] as String;
+                            final duration = file['duration'] as Duration?;
+                            final isSelected = _selectedFilePath == filePath;
+
                             return ListTile(
-                              title: Text(p.basename(file.path)),
+                              title: Text(p.basename(filePath)),
+                              subtitle: Text(duration != null
+                                  ? '${duration.inMinutes.toString().padLeft(2, '0')}:${(duration.inSeconds % 60).toString().padLeft(2, '0')}'
+                                  : '...'),
                               trailing: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   IconButton(
-                                    icon: const Icon(Icons.play_arrow),
+                                    icon: Icon(isSelected && _playerController.playerState == aw.PlayerState.playing ? Icons.pause : Icons.play_arrow),
                                     onPressed: () {
-                                      _playerController
+                                      if (isSelected && _playerController.playerState == aw.PlayerState.playing) {
+                                         _playerController.pausePlayer();
+                                      } else {
+                                        _playerController
                                           .preparePlayer(
-                                            path: file.path,
+                                            path: filePath,
                                             shouldExtractWaveform: true,
                                           )
-                                          .then((_) =>
-                                              _playerController.startPlayer());
-
+                                          .then((_) => _playerController
+                                              .startPlayer());
+                                      }
                                       setState(() {
-                                        _selectedFilePath = file.path;
+                                        _selectedFilePath = filePath;
                                       });
                                     },
                                   ),
@@ -371,17 +421,31 @@ class _RecordAudioScreenState extends State<RecordAudioScreen> {
                                     icon: const Icon(Icons.stop),
                                     onPressed: () {
                                       _playerController.stopPlayer();
+                                      setState(() {
+                                        _selectedFilePath = null;
+                                      });
                                     },
                                   ),
                                   IconButton(
-                                    icon: const Icon(Icons.delete),
-                                    onPressed: () =>
-                                        _deleteRecording(file.path),
+                                    icon: const Icon(Icons.delete, color: Colors.redAccent),
+                                    onPressed: () => _deleteRecording(filePath),
                                   ),
                                 ],
                               ),
-                              selected: _selectedFilePath == file.path,
-                              selectedTileColor: Colors.blue.withOpacity(0.3),
+                              selected: isSelected,
+                              selectedTileColor: Colors.blue.withOpacity(0.2),
+                              onTap: () {
+                                 _playerController
+                                          .preparePlayer(
+                                            path: filePath,
+                                            shouldExtractWaveform: true,
+                                          )
+                                          .then((_) => _playerController
+                                              .startPlayer());
+                                      setState(() {
+                                        _selectedFilePath = filePath;
+                                      });
+                              },
                             );
                           },
                         );

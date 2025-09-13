@@ -15,25 +15,43 @@ class PreviewScreen extends StatelessWidget {
       appBar: AppBar(title: const Text('Preview')),
       body: Column(
         children: [
-          Image.file(File(imagePath)),
-          ElevatedButton(
-            onPressed: () async {
-              final picturesPath = p.join(
-                (await getApplicationDocumentsDirectory()).path,
-                'pictures',
-              );
-              final newPath = p.join(picturesPath, p.basename(imagePath));
-              await Directory(picturesPath).create(recursive: true);
-              await File(imagePath).rename(newPath);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Picture saved to $newPath'),
-                  ),
-                );
-              }
-            },
-            child: const Text('Save Picture'),
+          Expanded(child: Image.file(File(imagePath))),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton(
+                  onPressed: () async {
+                    final picturesPath = p.join(
+                      (await getApplicationDocumentsDirectory()).path,
+                      'pictures',
+                    );
+                    final newPath = p.join(picturesPath, p.basename(imagePath));
+                    await Directory(picturesPath).create(recursive: true);
+                    await File(imagePath).rename(newPath);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Picture saved to $newPath'),
+                        ),
+                      );
+                      // Pop back to the home screen after saving
+                      Navigator.of(context).popUntil((route) => route.isFirst);
+                    }
+                  },
+                  child: const Text('Save Picture'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    // Just pop the screen to go back to the camera
+                    Navigator.pop(context);
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  child: const Text('Retake Picture'),
+                ),
+              ],
+            ),
           ),
         ],
       ),
