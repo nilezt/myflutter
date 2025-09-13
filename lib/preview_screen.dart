@@ -23,6 +23,9 @@ class PreviewScreen extends StatelessWidget {
               children: [
                 ElevatedButton(
                   onPressed: () async {
+                    final navigator = Navigator.of(context);
+                    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
                     final picturesPath = p.join(
                       (await getApplicationDocumentsDirectory()).path,
                       'pictures',
@@ -30,15 +33,16 @@ class PreviewScreen extends StatelessWidget {
                     final newPath = p.join(picturesPath, p.basename(imagePath));
                     await Directory(picturesPath).create(recursive: true);
                     await File(imagePath).rename(newPath);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Picture saved to $newPath'),
-                        ),
-                      );
-                      // Pop back to the home screen after saving
-                      Navigator.of(context).popUntil((route) => route.isFirst);
-                    }
+                    
+                    if (!context.mounted) return;
+
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(
+                        content: Text('Picture saved to $newPath'),
+                      ),
+                    );
+                    // Pop back to the home screen after saving
+                    navigator.popUntil((route) => route.isFirst);
                   },
                   child: const Text('Save Picture'),
                 ),

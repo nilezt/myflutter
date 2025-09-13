@@ -147,11 +147,12 @@ class TakePictureScreenState extends State<TakePictureScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
+          final navigator = Navigator.of(context);
           try {
             await _initializeControllerFuture;
             final image = await _controller.takePicture();
             if (!mounted) return;
-            await Navigator.of(context).push(
+            await navigator.push(
               MaterialPageRoute(
                 builder: (context) => PreviewScreen(
                   imagePath: image.path,
@@ -159,7 +160,7 @@ class TakePictureScreenState extends State<TakePictureScreen> {
               ),
             );
           } catch (e) {
-            print(e);
+            debugPrint('Error taking picture: $e');
           }
         },
         child: const Icon(Icons.camera_alt),
@@ -172,10 +173,10 @@ class RecordAudioScreen extends StatefulWidget {
   const RecordAudioScreen({super.key});
 
   @override
-  _RecordAudioScreenState createState() => _RecordAudioScreenState();
+  RecordAudioScreenState createState() => RecordAudioScreenState();
 }
 
-class _RecordAudioScreenState extends State<RecordAudioScreen> {
+class RecordAudioScreenState extends State<RecordAudioScreen> {
   final AudioRecorder _audioRecorder = AudioRecorder();
   final aw.PlayerController _playerController = aw.PlayerController();
   final AudioPlayer _durationPlayer = AudioPlayer();
@@ -225,7 +226,7 @@ class _RecordAudioScreenState extends State<RecordAudioScreen> {
     try {
       return await _durationPlayer.setFilePath(path);
     } catch (e) {
-      print("Error getting duration: $e");
+      debugPrint("Error getting duration: $e");
       return null;
     }
   }
@@ -433,7 +434,7 @@ class _RecordAudioScreenState extends State<RecordAudioScreen> {
                                 ],
                               ),
                               selected: isSelected,
-                              selectedTileColor: Colors.blue.withOpacity(0.2),
+                              selectedTileColor: Colors.blue.withAlpha(51),
                               onTap: () {
                                  _playerController
                                           .preparePlayer(
