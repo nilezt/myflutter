@@ -255,39 +255,55 @@ class TakePictureScreenState extends State<TakePictureScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Take a picture')),
-      body: FutureBuilder<void>(
-        future: _initializeControllerFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done) {
-            return CameraPreview(_controller);
-          } else {
-            return const Center(child: CircularProgressIndicator());
-          }
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final navigator = Navigator.of(context);
-          try {
-            await _initializeControllerFuture;
-            final image = await _controller.takePicture();
-            if (!mounted) return;
-            await navigator.push(
-              MaterialPageRoute(
-                builder: (context) => PreviewScreen(
-                  imagePath: image.path,
+      body: Stack(
+        children: [
+          FutureBuilder<void>(
+            future: _initializeControllerFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.done) {
+                return CameraPreview(_controller);
+              } else {
+                return const Center(child: CircularProgressIndicator());
+              }
+            },
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 24.0),
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  shape: const CircleBorder(),
+                  padding: const EdgeInsets.all(20),
                 ),
+                onPressed: () async {
+                  final navigator = Navigator.of(context);
+                  try {
+                    await _initializeControllerFuture;
+                    final image = await _controller.takePicture();
+                    if (!mounted) return;
+                    await navigator.push(
+                      MaterialPageRoute(
+                        builder: (context) => PreviewScreen(
+                          imagePath: image.path,
+                        ),
+                      ),
+                    );
+                  } catch (e) {
+                    debugPrint('Error taking picture: $e');
+                  }
+                },
+                child: const Icon(Icons.camera_alt, color: Colors.white),
               ),
-            );
-          } catch (e) {
-            debugPrint('Error taking picture: $e');
-          }
-        },
-        child: const Icon(Icons.camera_alt),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
+
 
 class RecordAudioScreen extends StatefulWidget {
   const RecordAudioScreen({super.key});
@@ -443,50 +459,6 @@ class RecordAudioScreenState extends State<RecordAudioScreen> {
             )
           : Column(
               children: <Widget>[
-                const SizedBox(height: 20),
-                Text(
-                  _isRecording ? 'Recording...' : 'Tap to Record',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                if (_isRecording)
-                  Text(
-                    _formatDuration(_recordDuration),
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
-                const SizedBox(height: 20),
-                GestureDetector(
-                  onTap: _isRecording ? _stopRecording : _startRecording,
-                  child: Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: _isRecording ? Colors.red : Colors.blue,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _isRecording ? Icons.stop : Icons.mic,
-                      color: Colors.white,
-                      size: 40,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                if (_selectedFilePath != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: aw.AudioFileWaveforms(
-                      size:
-                          Size(MediaQuery.of(context).size.width * 0.8, 100.0),
-                      playerController: _playerController,
-                      enableSeekGesture: true,
-                      waveformType: aw.WaveformType.long,
-                      playerWaveStyle: const aw.PlayerWaveStyle(
-                        fixedWaveColor: Colors.grey,
-                        liveWaveColor: Colors.blueAccent,
-                        spacing: 6,
-                      ),
-                    ),
-                  ),
                 const Text('Recorded Files',
                     style:
                         TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -574,6 +546,50 @@ class RecordAudioScreenState extends State<RecordAudioScreen> {
                     },
                   ),
                 ),
+                if (_selectedFilePath != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: aw.AudioFileWaveforms(
+                      size:
+                          Size(MediaQuery.of(context).size.width * 0.8, 100.0),
+                      playerController: _playerController,
+                      enableSeekGesture: true,
+                      waveformType: aw.WaveformType.long,
+                      playerWaveStyle: const aw.PlayerWaveStyle(
+                        fixedWaveColor: Colors.grey,
+                        liveWaveColor: Colors.blueAccent,
+                        spacing: 6,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 20),
+                Text(
+                  _isRecording ? 'Recording...' : 'Tap to Record',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                if (_isRecording)
+                  Text(
+                    _formatDuration(_recordDuration),
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                const SizedBox(height: 20),
+                GestureDetector(
+                  onTap: _isRecording ? _stopRecording : _startRecording,
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: _isRecording ? Colors.red : Colors.blue,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _isRecording ? Icons.stop : Icons.mic,
+                      color: Colors.white,
+                      size: 40,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
               ],
             ),
     );
