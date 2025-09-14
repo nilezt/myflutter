@@ -40,13 +40,75 @@ class NoCamerasScreen extends StatelessWidget {
   }
 }
 
-class MyHomePage extends StatelessWidget {
+class MyHomePage extends StatefulWidget {
   const MyHomePage({
     super.key,
     required this.cameras,
   });
 
   final List<CameraDescription> cameras;
+
+  @override
+  State<MyHomePage> createState() => _MyHomePageState();
+}
+
+class _MyHomePageState extends State<MyHomePage> {
+  late Future<List<File>> _imageFiles;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!kIsWeb) {
+      _imageFiles = _getSavedImages();
+    }
+  }
+
+  Future<List<File>> _getSavedImages() async {
+    final appDocumentsDir = await getApplicationDocumentsDirectory();
+    final picturesPath = p.join(appDocumentsDir.path, 'pictures');
+    final directory = Directory(picturesPath);
+    if (await directory.exists()) {
+      return directory
+          .listSync()
+          .where((item) => item.path.endsWith('.jpg'))
+          .map((item) => File(item.path))
+          .toList();
+    }
+    return [];
+  }
+
+  void _refreshImages() {
+    setState(() {
+      _imageFiles = _getSavedImages();
+    });
+  }
+
+  Future<void> _deleteImage(File imageFile) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Image'),
+        content: const Text('Are you sure you want to delete this image?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      if (await imageFile.exists()) {
+        await imageFile.delete();
+      }
+      _refreshImages();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,44 +118,102 @@ class MyHomePage extends StatelessWidget {
     );
     return Scaffold(
       appBar: AppBar(title: const Text('Myflutter App')),
-      body: Center(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (!kIsWeb)
-              ElevatedButton(
-                style: buttonStyle,
-                child: const Text('Take a Picture'),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          TakePictureScreen(camera: cameras.first),
-                    ),
-                  );
+      body: Column(
+        children: [
+          if (!kIsWeb)
+            Expanded(
+              child: FutureBuilder<List<File>>(
+                future: _imageFiles,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  } else if (snapshot.hasError) {
+                    return Center(child: Text('Error: ${snapshot.error}'));
+                  } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Center(child: Text('No images found.'));
+                  } else {
+                    final images = snapshot.data!;
+                    return ListView.builder(
+                      itemCount: images.length,
+                      itemBuilder: (context, index) {
+                        final imageFile = images[index];
+                        return ListTile(
+                          leading: Image.file(
+                            imageFile,
+                            width: 50,
+                            height: 50,
+                            fit: BoxFit.cover,
+                          ),
+                          title: Text(p.basename(imageFile.path)),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.visibility),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          PreviewScreen(imagePath: imageFile.path, isTemporary: false),
+                                    ),
+                                  );
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.redAccent),
+                                onPressed: () => _deleteImage(imageFile),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  }
                 },
               ),
-            if (!kIsWeb) ...[
-              const SizedBox(width: 16),
-              ElevatedButton(
-                style: buttonStyle,
-                child: const Text('Record Audio'),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const RecordAudioScreen(),
-                    ),
-                  );
-                },
-              ),
+            ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (!kIsWeb)
+                ElevatedButton(
+                  style: buttonStyle,
+                  child: const Text('Take a Picture'),
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            TakePictureScreen(camera: widget.cameras.first),
+                      ),
+                    );
+                    _refreshImages();
+                  },
+                ),
+              if (!kIsWeb) ...[
+                const SizedBox(width: 16),
+                ElevatedButton(
+                  style: buttonStyle,
+                  child: const Text('Record Audio'),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const RecordAudioScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ],
+              if (kIsWeb)
+                const Text(
+                    'Camera and audio recording are not available on the web.'),
             ],
-            if (kIsWeb)
-              const Text(
-                  'Camera and audio recording are not available on the web.'),
-          ],
-        ),
+          ),
+          const SizedBox(height: 20),
+        ],
       ),
     );
   }

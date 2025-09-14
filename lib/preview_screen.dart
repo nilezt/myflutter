@@ -6,57 +6,67 @@ import 'package:path_provider/path_provider.dart';
 
 class PreviewScreen extends StatelessWidget {
   final String imagePath;
+  final bool isTemporary;
 
-  const PreviewScreen({super.key, required this.imagePath});
+  const PreviewScreen(
+      {super.key, required this.imagePath, this.isTemporary = true});
 
   @override
   Widget build(BuildContext context) {
+    final ButtonStyle buttonStyle = ElevatedButton.styleFrom(
+      backgroundColor: Colors.lightBlue,
+      foregroundColor: Colors.white,
+    );
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Preview')),
+      appBar: AppBar(
+        title: const Text('Preview'),
+      ),
       body: Column(
         children: [
-          Expanded(child: Image.file(File(imagePath))),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                ElevatedButton(
-                  onPressed: () async {
-                    final navigator = Navigator.of(context);
-                    final scaffoldMessenger = ScaffoldMessenger.of(context);
-
-                    final picturesPath = p.join(
-                      (await getApplicationDocumentsDirectory()).path,
-                      'pictures',
-                    );
-                    final newPath = p.join(picturesPath, p.basename(imagePath));
-                    await Directory(picturesPath).create(recursive: true);
-                    await File(imagePath).rename(newPath);
-                    
-                    if (!context.mounted) return;
-
-                    scaffoldMessenger.showSnackBar(
-                      SnackBar(
-                        content: Text('Picture saved to $newPath'),
-                      ),
-                    );
-                    // Pop back to the home screen after saving
-                    navigator.popUntil((route) => route.isFirst);
-                  },
-                  child: const Text('Save Picture'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    // Just pop the screen to go back to the camera
-                    Navigator.pop(context);
-                  },
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                  child: const Text('Retake Picture'),
-                ),
-              ],
+          Expanded(
+            child: Center(
+              child: Image.file(File(imagePath)),
             ),
           ),
+          if (isTemporary)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton(
+                    style: buttonStyle,
+                    onPressed: () {
+                      // Discard the temporary image and go back to the camera
+                      Navigator.of(context).pop();
+                    },
+                    child: const Text('Retake'),
+                  ),
+                  ElevatedButton(
+                    style: buttonStyle,
+                    onPressed: () async {
+                      final appDocumentsDir =
+                          await getApplicationDocumentsDirectory();
+                      final picturesPath = p.join(appDocumentsDir.path, 'pictures');
+                      await Directory(picturesPath).create(recursive: true);
+                      final newImagePath = p.join(picturesPath,
+                          'image_${DateTime.now().millisecondsSinceEpoch}.jpg');
+                      
+                      // Save the image
+                      await File(imagePath).copy(newImagePath);
+
+                      if (context.mounted) {
+                        // Go back to the home screen
+                        Navigator.of(context)
+                            .popUntil((route) => route.isFirst);
+                      }
+                    },
+                    child: const Text('Save'),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
