@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -50,8 +51,9 @@ class PreviewScreen extends StatelessWidget {
                           await getApplicationDocumentsDirectory();
                       final picturesPath = p.join(appDocumentsDir.path, 'pictures');
                       await Directory(picturesPath).create(recursive: true);
-                      final newImagePath = p.join(picturesPath,
-                          'image_${DateTime.now().millisecondsSinceEpoch}.jpg');
+                      final formattedDate =
+                          DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+                      final newImagePath = p.join(picturesPath, 'image_$formattedDate.jpg');
                       
                       // Save the image
                       await File(imagePath).copy(newImagePath);
